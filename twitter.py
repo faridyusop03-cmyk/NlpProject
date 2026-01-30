@@ -87,12 +87,24 @@ if st.button("Analyze Sentiment"):
             "Probability": probs
         })
 
-        fig, ax = plt.subplots()
-        ax.bar(prob_df["Sentiment"], prob_df["Probability"])
-        ax.set_ylabel("Probability")
-        ax.set_title("Prediction Confidence")
+        # --- BAR CHART ---
+        fig_bar, ax_bar = plt.subplots()
+        ax_bar.bar(prob_df["Sentiment"], prob_df["Probability"])
+        ax_bar.set_ylabel("Probability")
+        ax_bar.set_title("Prediction Confidence (Bar Chart)")
+        st.pyplot(fig_bar)
 
-        st.pyplot(fig)
+        # --- PIE CHART ---
+        fig_pie, ax_pie = plt.subplots()
+        ax_pie.pie(
+            prob_df["Probability"],
+            labels=prob_df["Sentiment"],
+            autopct="%1.1f%%",
+            startangle=90
+        )
+        ax_pie.set_title("Prediction Confidence (Pie Chart)")
+        ax_pie.axis("equal")  # Makes the pie chart circular
+        st.pyplot(fig_pie)
 
 # -------------------------------
 # FOOTER
