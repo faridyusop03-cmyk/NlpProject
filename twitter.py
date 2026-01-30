@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 # =====================================
-# PATH CONFIG
+# PATH CONFIG (CLOUD + LOCAL SAFE)
 # =====================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -54,19 +54,19 @@ def train_or_load_model():
         df = pd.read_csv(DATA_PATH)
     else:
         if not os.path.exists(DATA_PATH):
-            st.error("Dataset file not found.")
+            st.error("❌ Dataset file not found.")
             st.stop()
 
         df = pd.read_csv(DATA_PATH)
-
-        # ❌ REMOVE IRRELEVANT
-        df = df[df["label"] != "Irrelevant"]
 
         X = df["text"].astype(str).apply(clean_text)
         y = df["label"]
 
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+            X, y,
+            test_size=0.2,
+            random_state=42,
+            stratify=y
         )
 
         vectorizer = TfidfVectorizer(
@@ -102,18 +102,18 @@ def train_or_load_model():
 st.set_page_config(page_title="Sentiment Analysis Dashboard", layout="centered")
 
 st.title("💬 Sentiment Analysis Dashboard")
-st.write("Sentiment classification using NLP and Machine Learning")
+st.write("Sentiment classification using NLP, TF-IDF, and Logistic Regression")
 
 model, vectorizer, accuracy, df = train_or_load_model()
 
 # =====================================
 # ACCURACY DISPLAY
 # =====================================
-if accuracy:
-    st.success(f"🎯 Model Accuracy: **{accuracy:.2%}**")
+if accuracy is not None:
+    st.success(f"🎯 Model Accuracy: **{accuracy * 100:.2f}%**")
 
 # =====================================
-# PIE CHART (DATA DISTRIBUTION)
+# PIE CHART (DATASET DISTRIBUTION)
 # =====================================
 st.subheader("📊 Sentiment Distribution (Dataset)")
 
@@ -135,7 +135,7 @@ st.pyplot(fig1)
 # =====================================
 st.subheader("📝 Sentiment Prediction")
 
-user_text = st.text_area("Enter text:", height=150)
+user_text = st.text_area("Enter text for sentiment analysis:", height=150)
 
 if st.button("Analyze Sentiment"):
     if user_text.strip() == "":
