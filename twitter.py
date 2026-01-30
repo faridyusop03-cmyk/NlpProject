@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import re
-import string
 import joblib
 import os
 import matplotlib.pyplot as plt
@@ -9,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score
 
 # -------------------------------
 # CONFIG
@@ -17,28 +15,6 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 DATA_PATH = "twitter_training_10k_ml_ready.csv"
 MODEL_PATH = "sentiment_model.pkl"
 VECTORIZER_PATH = "tfidf_vectorizer.pkl"
-
-# -------------------------------
-# TEXT CLEANING
-# -------------------------------
-stopwords = {
-    "i","me","my","we","our","you","your","he","she","it","they","them",
-    "is","am","are","was","were","be","been","being",
-    "a","an","the","and","or","but","if","because","as","until","while",
-    "of","at","by","for","with","about","against","between","into","through",
-    "to","from","up","down","in","out","on","off","over","under",
-    "again","further","then","once","here","there","when","where","why","how",
-    "all","any","both","each","few","more","most","other","some","such",
-    "no","nor","not","only","own","same","so","than","too","very"
-}
-
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r"http\S+|www\S+", "", text)
-    text = text.translate(str.maketrans("", "", string.punctuation))
-    text = re.sub(r"\d+", "", text)
-    text = " ".join(w for w in text.split() if w not in stopwords)
-    return text.strip()
 
 # -------------------------------
 # TRAIN MODEL (ONLY IF NOT EXIST)
@@ -52,7 +28,7 @@ def train_or_load_model():
     else:
         df = pd.read_csv(DATA_PATH)
 
-        X = df["text"].astype(str).apply(clean_text)
+        X = df["text"].astype(str)   # ❌ No cleaning
         y = df["label"]
 
         X_train, X_test, y_train, y_test = train_test_split(
@@ -100,8 +76,7 @@ if st.button("Analyze Sentiment"):
     if user_text.strip() == "":
         st.warning("Please enter some text.")
     else:
-        cleaned = clean_text(user_text)
-        vec = vectorizer.transform([cleaned])
+        vec = vectorizer.transform([user_text])   # ❌ No cleaning
         prediction = model.predict(vec)[0]
         probs = model.predict_proba(vec)[0]
 
