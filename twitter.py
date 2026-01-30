@@ -3,11 +3,13 @@ import pandas as pd
 import joblib
 import os
 import matplotlib.pyplot as plt
+import re
+import string
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+from sklearn.svm import LinearSVC
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
 # -------------------------------
 # CONFIG
@@ -17,42 +19,69 @@ MODEL_PATH = "sentiment_model.pkl"
 VECTORIZER_PATH = "tfidf_vectorizer.pkl"
 
 # -------------------------------
-# TRAIN / LOAD MODEL (ALWAYS SHOW ACCURACY)
+# TEXT CLEANING
+# -------------------------------
+stopwords = {
+    "i","me","my","we","our","you","your","he","she","it","they","them",
+    "is","am","are","was","were","be","been","being",
+    "a","an","the","and","or","but","if","because","as","until","while",
+    "of","at","by","for","with","about","against","between","into","through",
+    "to","from","up","down","in","out","on","off","over","under",
+    "again","further","then","once","here","there","when","where","why","how",
+    "all","any","both","each","few","more","most","other","some","such",
+    "no","nor","not","only","own","same","so","than","too","very"
+}
+
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r"http\S+|www\S+", "", text)
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    text = re.sub(r"\d+", "", text)
+    text = " ".join(w for w in text.split() if w not in stopwords)
+    return text.strip()
+
+# -------------------------------
+# TRAIN / LOAD MODEL
 # -------------------------------
 @st.cache_resource
 def train_or_load_model():
     df = pd.read_csv(DATA_PATH)
 
-    X = df["text"].astype(str)   # No cleaning
+    X = df["text"].astype(str).apply(clean_text)
     y = df["label"]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+    vectorizer = TfidfVectorizer(
+        max_features=10000,
+        ngram_range=(1, 3),
+        min_df=2,
+        max_df=0.9,
+        sublinear_tf=True
     )
 
-    if os.path.exists(MODEL_PATH) and os.path.exists(VECTORIZER_PATH):
-        model = joblib.load(MODEL_PATH)
-        vectorizer = joblib.load(VECTORIZER_PATH)
-    else:
-        vectorizer = TfidfVectorizer(
-            max_features=5000,
-            ngram_range=(1, 2)
-        )
+    X_vec = vectorizer.fit_transform(X)
 
-        X_train_vec = vectorizer.fit_transform(X_train)
+    # Cross-validation
+    model = LinearSVC()
+    cv_scores = cross_val_score(model, X_vec, y, cv=5, scoring="accuracy")
+    cv_accuracy = cv_scores.mean()
 
-        model = LogisticRegression(max_iter=1000)
-        model.fit(X_train_vec, y_train)
+    # Train-test split for evaluation visuals
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_vec, y, test_size=0.2, random_state=42, stratify=y
+    )
 
-        joblib.dump(model, MODEL_PATH)
-        joblib.dump(vectorizer, VECTORIZER_PATH)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
 
-    # Always evaluate accuracy
-    X_test_vec = vectorizer.transform(X_test)
-    y_pred = model.predict(X_test_vec)
     accuracy = accuracy_score(y_test, y_pred)
+    conf_matrix = confusion_matrix(y_test, y_pred)
+    report = classification_report(y_test, y_pred, output_dict=True)
 
-    return model, vectorizer, accuracy
+    # Save model + vectorizer
+    joblib.dump(model, MODEL_PATH)
+    joblib.dump(vectorizer, VECTORIZER_PATH)
+
+    return model, vectorizer, accuracy, cv_accuracy, conf_matrix, report
 
 # -------------------------------
 # STREAMLIT UI
@@ -60,42 +89,57 @@ def train_or_load_model():
 st.set_page_config(page_title="Sentiment Analysis Dashboard", layout="centered")
 
 st.title("💬 Sentiment Analysis Dashboard")
-st.write("NLP-based sentiment analysis using TF-IDF and Logistic Regression")
+st.write("Advanced NLP sentiment analysis with LinearSVC, TF-IDF, and cross-validation")
 
-model, vectorizer, accuracy = train_or_load_model()
+model, vectorizer, accuracy, cv_accuracy, conf_matrix, report = train_or_load_model()
 
-st.success(f"Model Accuracy: **{accuracy:.2%}**")
+st.success(f"Hold-out Test Accuracy: **{accuracy:.2%}**")
+st.info(f"Cross-Validation Accuracy (5-fold): **{cv_accuracy:.2%}**")
+
+# -------------------------------
+# CONFUSION MATRIX
+# -------------------------------
+st.subheader("📊 Confusion Matrix")
+fig_cm, ax_cm = plt.subplots()
+ax_cm.imshow(conf_matrix, cmap="Blues")
+ax_cm.set_title("Confusion Matrix")
+ax_cm.set_xlabel("Predicted Label")
+ax_cm.set_ylabel("True Label")
+ax_cm.set_xticks(range(len(model.classes_)))
+ax_cm.set_yticks(range(len(model.classes_)))
+ax_cm.set_xticklabels(model.classes_)
+ax_cm.set_yticklabels(model.classes_)
+for i in range(conf_matrix.shape[0]):
+    for j in range(conf_matrix.shape[1]):
+        ax_cm.text(j, i, conf_matrix[i, j], ha="center", va="center", color="black")
+st.pyplot(fig_cm)
+
+# -------------------------------
+# CLASSIFICATION METRICS
+# -------------------------------
+st.subheader("📈 Classification Report")
+report_df = pd.DataFrame(report).transpose().round(3)
+st.dataframe(report_df)
 
 # -------------------------------
 # USER INPUT
 # -------------------------------
+st.subheader("📝 Analyze New Text")
 user_text = st.text_area("Enter text for sentiment analysis:", height=150)
 
 if st.button("Analyze Sentiment"):
     if user_text.strip() == "":
         st.warning("Please enter some text.")
     else:
-        vec = vectorizer.transform([user_text])  # No cleaning
+        cleaned = clean_text(user_text)
+        vec = vectorizer.transform([cleaned])
         prediction = model.predict(vec)[0]
-        probs = model.predict_proba(vec)[0]
 
         st.subheader("🔍 Prediction Result")
         st.success(f"Sentiment: **{prediction}**")
-
-        prob_df = pd.DataFrame({
-            "Sentiment": model.classes_,
-            "Probability": probs
-        })
-
-        fig, ax = plt.subplots()
-        ax.bar(prob_df["Sentiment"], prob_df["Probability"])
-        ax.set_ylabel("Probability")
-        ax.set_title("Prediction Confidence")
-
-        st.pyplot(fig)
 
 # -------------------------------
 # FOOTER
 # -------------------------------
 st.markdown("---")
-st.caption("NLP Project • Streamlit • TF-IDF • Logistic Regression")
+st.caption("NLP Project • Streamlit • TF-IDF • LinearSVC • Cross-Validation")
